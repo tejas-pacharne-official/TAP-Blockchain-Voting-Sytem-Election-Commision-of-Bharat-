@@ -9,10 +9,9 @@ contract ElectionComissionofBharat {
         mapping(uint => Candidate)  E_candidates;
         uint E_Year;
         uint E_Id;
-        bool E_voting_phase;
         uint E_total_voters;
         uint E_candidate_count;
-
+        election_phases E_voting_phase;
     }
 
     struct Voter {
@@ -36,13 +35,6 @@ contract ElectionComissionofBharat {
 
     }
 
-    struct Proposal {
-        // If you can limit the length to a certain number of bytes, 
-        // always use one of bytes1 to bytes32 because they are much cheaper
-        bytes32 name;   // short name (up to 32 bytes)
-        uint voteCount; // number of accumulated votes
-    }
-
     struct Candidate{
         string c_name;
         uint c_id;
@@ -51,7 +43,8 @@ contract ElectionComissionofBharat {
     }
 
     // Global Variables
-
+    
+    enum election_phases{ Yet_to_Start , Started, Finished }
     address public chairperson;
     mapping(uint => Voter) public voters;
     uint voters_count;
@@ -59,7 +52,6 @@ contract ElectionComissionofBharat {
     mapping(address => Chairperson) internal chairpersons;
     Election[] elections;
     uint election_id_count = 0;
-    Proposal[] public proposals;
 
     constructor(uint f_Id,string memory f_name) {
 
@@ -80,7 +72,7 @@ contract ElectionComissionofBharat {
         Election storage e1 = elections[elections.length-1];
         e1.E_ward = f_ward;
         e1.E_PIN = f_pin;
-        e1.E_voting_phase=  false;
+        e1.E_voting_phase=  election_phases.Yet_to_Start;
         e1.E_Year = f_year;
         e1.E_total_voters = 0;
         e1.E_candidates[e1.E_candidate_count] = Candidate({c_name: "NOTA", c_id: e1.E_candidate_count, c_votes: 0 , party_name: "NOTA"});
@@ -107,9 +99,21 @@ contract ElectionComissionofBharat {
             
             if(elections[i].E_ward == f_ward && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year ){
                 
-                elections[i].E_voting_phase = true;
-                flag = true;
-            
+                if(elections[i].E_voting_phase == election_phases.Yet_to_Start){
+                    elections[i].E_voting_phase = election_phases.Started;
+                    flag = true;
+                }
+                else if(elections[i].E_voting_phase == election_phases.Started){
+                    elections[i].E_voting_phase = election_phases.Finished;
+                    flag = true;
+                }
+                else{
+                    require(
+                        false,
+                        "Election Finished If you are chairman to kya hua, ye blockchain hai ! kiska baap chi change nahi kar sakta result bhadve"
+                    );
+                }
+                
             }
 
         }
@@ -130,8 +134,8 @@ contract ElectionComissionofBharat {
             
             if(elections[i].E_ward == f_ward && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year ){
                 require(
-                elections[i].E_voting_phase == false, 
-                    " Election is over or started, Cannot add candidate "
+                elections[i].E_voting_phase == election_phases.Yet_to_Start, 
+                    " Election is started or finished, Cannot add candidate "
                 );
                 elections[i].E_candidates[elections[i].E_candidate_count] = Candidate({c_name: f_name, c_id: elections[i].E_candidate_count ,c_votes: 0, party_name: f_party});
                 elections[i].E_candidate_count+=1;
@@ -151,7 +155,6 @@ contract ElectionComissionofBharat {
             chairpersons[msg.sender].ch_address == msg.sender,
             "Error 1.1: Only chairperson can have right to give right to vote."
         );
-
         voters[voter_id].V_voted= false;
     
     }
@@ -228,7 +231,7 @@ contract ElectionComissionofBharat {
             
             if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN){
                 require(
-                elections[i].E_voting_phase != false, 
+                elections[i].E_voting_phase == election_phases.Started, 
                     " Voting Phase is not yet started ... "
                 );
                 require( 
@@ -241,6 +244,7 @@ contract ElectionComissionofBharat {
                         
                         elections[i].E_candidates[j].c_votes +=1;
                         voters[f_id].V_voted = true;
+                        elections[i].E_total_voters += 1; 
                         break;
                     
                     }
@@ -274,7 +278,7 @@ contract ElectionComissionofBharat {
 
             if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN){
                 require(
-                elections[i].E_voting_phase = false, 
+                elections[i].E_voting_phase == election_phases.Started , 
                     " Voting Phase is not yet started ... "
                 );
 
@@ -282,6 +286,7 @@ contract ElectionComissionofBharat {
                     if(  keccak256(abi.encodePacked(elections[i].E_candidates[j].party_name)) == keccak256(abi.encodePacked(f_party)) ){
                         elections[i].E_candidates[j].c_votes +=1;
                         voters[f_id].V_voted = true;
+                        elections[i].E_total_voters += 1; 
                         break;
                     }
                 }
@@ -295,29 +300,37 @@ contract ElectionComissionofBharat {
     }
 
 
-    function winningProposal() public view
-        returns (uint winningProposal_)
-        {
-        uint winningVoteCount = 0;
-        for (uint p = 0; p < proposals.length; p++) {
-            if (proposals[p].voteCount > winningVoteCount) {
-                winningVoteCount = proposals[p].voteCount;
-                winningProposal_ = p;
-            }
-        }
-    }
-
     function getCandidateVoteCount(uint f_ward,uint f_pin , uint f_year,uint f_candidate_id)public view returns (Candidate memory f_votes_count)
     {
         for(uint i =0; i < elections.length; i++){
             
             if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
                 require(
-                elections[i].E_voting_phase == true,
-                    "Voting phase is not yet started please try again later ... "
+                elections[i].E_voting_phase == election_phases.Finished,
+                    "Voting phase is not yet finihed please try again later ... "
                 );                                                      
                 require(
-                elections[i].E_candidate_count < f_candidate_id,
+                elections[i].E_candidate_count > f_candidate_id,
+                    "Voting phase is on please try again later ... "
+                );  
+                f_votes_count = elections[i].E_candidates[f_candidate_id];
+                break;                                                              
+            }           
+
+        }
+
+    }
+    function getCandidateDetails(uint f_ward,uint f_pin , uint f_year,uint f_candidate_id)public view returns (Candidate memory f_votes_count)
+    {
+        for(uint i =0; i < elections.length; i++){
+            
+            if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
+                require(
+                elections[i].E_voting_phase == election_phases.Yet_to_Start || elections[i].E_voting_phase == election_phases.Finished,
+                    "Voting phase is On please try again later ... "
+                );                                                      
+                require(
+                elections[i].E_candidate_count > f_candidate_id,
                     "Voting phase is on please try again later ... "
                 );  
                 f_votes_count = elections[i].E_candidates[f_candidate_id];
@@ -328,7 +341,6 @@ contract ElectionComissionofBharat {
 
     }
 
-
     function getWinnerName(uint f_ward,uint f_pin , uint f_year)public view returns (string memory winnerName)
     {
         uint max = 0;
@@ -336,8 +348,8 @@ contract ElectionComissionofBharat {
             
             if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
                 require(
-                elections[i].E_voting_phase == true, 
-                    "Voting phase is on please try again later ... "
+                elections[i].E_voting_phase == election_phases.Finished, 
+                    "Voting phase is not finshed please try again later ... "
                 );
                 
                 for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
@@ -355,7 +367,40 @@ contract ElectionComissionofBharat {
 
         }
     }
+    /*
+    struct Election {
+        
+        uint E_ward; 
+        uint E_PIN;  
+        mapping(uint => Candidate)  E_candidates;
+        uint E_Year;
+        uint E_Id;
+        uint E_total_voters;
+        uint E_candidate_count;
+        election_phases E_voting_phase;
+    }
+    */
+    function getElectionDetails(uint f_ward,uint f_pin , uint f_year)public view returns (uint ward ,uint pin, uint year, uint id , uint total_voters , uint can_total_count ,election_phases phase ){
+        require(
+            chairpersons[msg.sender].ch_address == msg.sender,
+            "Error 1.1: Only chairperson can see election details."
+        );
+        for(uint i =0; i < elections.length; i++){
+            
+            if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
+                
+                ward = elections[i].E_ward;
+                pin = elections[i].E_PIN;
+                year = elections[i].E_Year;
+                id = elections[i].E_Id;
+                total_voters = elections[i].E_total_voters;
+                can_total_count = elections[i].E_candidate_count;
+                phase = elections[i].E_voting_phase;
+                break;
 
+            }
+        }
+    }
+    
 }
-
 
