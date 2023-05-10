@@ -6,12 +6,19 @@ contract ElectionComissionofBharat {
         
         uint E_ward; 
         uint E_PIN;  
-        mapping(uint => Candidate)  E_candidates;
+        mapping(uint => Candidate) E_candidates;
         uint E_Year;
         uint E_Id;
         uint E_total_voters;
         uint E_candidate_count;
         election_phases E_voting_phase;
+        mapping (address => EVM) E_evm;
+
+    }
+
+    struct EVM {
+        address EVM_address;
+        string EVM_location;
     }
 
     struct Voter {
@@ -25,6 +32,7 @@ contract ElectionComissionofBharat {
         uint weight;
         bool V_isValue;
         bool V_linked;
+
     }
 
     struct Chairperson{
@@ -45,17 +53,16 @@ contract ElectionComissionofBharat {
     // Global Variables
     
     enum election_phases{ Yet_to_Start , Started, Finished }
-    address public chairperson;
-    mapping(uint => Voter) public voters;
+    mapping(uint => Voter) voters;
     uint voters_count;
     uint charipersons_count;
     mapping(address => Chairperson) internal chairpersons;
     Election[] elections;
     uint election_id_count = 0;
+    mapping(address => bool) internal duplicate;
 
     constructor(uint f_Id,string memory f_name) {
 
-        chairperson = msg.sender;
         chairpersons[msg.sender].ch_name = f_name;
         chairpersons[msg.sender].ch_id = f_Id;
         chairpersons[msg.sender].ch_address = msg.sender;
@@ -81,12 +88,6 @@ contract ElectionComissionofBharat {
         
     }
     
-    /*
-    function getElection() public view returns Election{
-        
-        retrun  
-    
-    }*/
 
     function changeElectionPhase(uint f_ward, uint f_pin , uint f_year) public{
         require(
@@ -155,7 +156,7 @@ contract ElectionComissionofBharat {
             chairpersons[msg.sender].ch_address == msg.sender,
             "Error 1.1: Only chairperson can have right to give right to vote."
         );
-        voters[voter_id].V_voted= false;
+        voters[voter_id].V_voted = false;
     
     }
 
@@ -170,21 +171,15 @@ contract ElectionComissionofBharat {
             voters[voter_id].V_isValue,
             "Error 2.2: Please ask voter to fill details."
         );
-
+        require(
+            duplicate[f_voter_address] == false,
+            "Address already present in th system..."    
+        );
         voters[voter_id].V_address = f_voter_address;
-        voters[voter_id].V_linked = true;  
+        voters[voter_id].V_linked = true; 
+        duplicate[f_voter_address] = true; 
     }
 
-    /*
-        bool V_voted;  // if true, that person already voted 
-        uint V_adhar_no; // UID done
-        uint V_Id;   // Voter ID number done
-        uint V_PIN;   // Pincode done
-        uint V_ward;  // Ward No done
-        address V_address; 
-        uint weight;
-        bool V_isValue; done
-    */
 
     function addVoterDetails(uint f_ID,uint f_adhar_no ,uint f_PIN,uint f_ward) public {
 
@@ -197,6 +192,7 @@ contract ElectionComissionofBharat {
         voters[f_ID].V_adhar_no = f_adhar_no;
         voters[f_ID].V_PIN = f_PIN;
         voters[f_ID].V_ward= f_ward;
+        voters[f_ID].V_voted = false;
 
     }  
 
@@ -210,88 +206,111 @@ contract ElectionComissionofBharat {
 
     }
 
-    function vote(uint f_id , uint c_id) public {
+    function voteUsingEVM(uint f_ward , uint f_pin , uint f_year , uint f_id , uint c_id) public {
         
-        /*
-        Voter storage sender = voters[msg.sender];
-        require(sender.weight != 0, "Has no right to vote");
-        require(!sender.voted, "Already voted.");
-        sender.voted = true;
-        sender.vote = proposal;
-        */
-
-        require( voters[f_id].V_address != msg.sender , 
-        "You can only vote with valid linked account, 2 attempts left to get banned..."
+        bool flag = false;
+        require( voters[f_id].V_voted == false, 
+            "Already Voted Cannot Vote again"
         );
 
-        require( voters[f_id].V_voted == true, 
-        "Already Voted Cannot Vote again");
-
         for(uint i =0; i < elections.length; i++){
-            
-            if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN){
+
+            if(elections[i].E_ward ==f_ward && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
                 require(
                 elections[i].E_voting_phase == election_phases.Started, 
                     " Voting Phase is not yet started ... "
                 );
                 require( 
-                elections[i].E_candidate_count < c_id, 
-                "Already Voted Cannot Vote again"
+                elections[i].E_candidate_count > c_id, 
+                "Candidate id not found"
                 );
-
+                require( 
+                    keccak256(abi.encodePacked(elections[i].E_evm[msg.sender].EVM_address)) == keccak256(abi.encodePacked(msg.sender)),
+                    "Invalid EVM please ask chairman to add EVM..."
+                );
                 for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
-                    if(elections[i].E_candidates[j].c_id == c_id ){
+                    if(keccak256(abi.encodePacked(j)) == keccak256(abi.encodePacked(c_id))){
                         
                         elections[i].E_candidates[j].c_votes +=1;
                         voters[f_id].V_voted = true;
                         elections[i].E_total_voters += 1; 
+                        flag = true;
                         break;
+
                     
                     }
                 }
-                
-                require(false, 
-                "Candidate Id Not Found ...");
+                require(flag,
+                "Error 2.5: Candidaee id not found ...");
             }
         }
         
     }
 
-    function vote(uint f_id , string memory f_party) public {
+    function vote(uint f_id , uint c_f_id , uint f_year) public {
         
-        /*
-        Voter storage sender = voters[msg.sender];
-        require(sender.weight != 0, "Has no right to vote");
-        require(!sender.voted, "Already voted.");
-        sender.voted = true;
-        sender.vote = proposal;
-        */
-
-        require( voters[f_id].V_address != msg.sender , 
+        bool flag=false;
+        require( keccak256(abi.encodePacked(voters[f_id].V_address)) == keccak256(abi.encodePacked(msg.sender)), 
         "You can only vote with valid linked account, 2 attempts left to get banned..."
         );
 
-        require( voters[f_id].V_voted == true, 
+        require( voters[f_id].V_voted == false, 
+        "Already Voted Cannot Vote again");
+
+        for(uint i =0; i < elections.length; i++){
+            
+            if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN && elections[i].E_Year == f_year){
+
+                require(
+                elections[i].E_voting_phase == election_phases.Started, 
+                    " Voting Phase is not yet started ... "
+                );
+
+                for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
+                    if(keccak256(abi.encodePacked(j)) == keccak256(abi.encodePacked(c_f_id))
+                      ){
+                        elections[i].E_candidates[j].c_votes +=1;
+                        voters[f_id].V_voted = true;
+                        elections[i].E_total_voters += 1; 
+                        flag=true;
+                        break;
+                    
+                    }
+                }
+                require(flag, 
+                "Candidate Id Not Found ...");
+            }
+        }
+
+    }
+
+    function vote(uint f_id , string memory f_party , uint f_year) public {
+        bool flag=false;
+        require( keccak256(abi.encodePacked(voters[f_id].V_address)) == keccak256(abi.encodePacked(msg.sender)),
+        "You can only vote with valid linked account, 2 attempts left to get banned..."
+        );
+
+        require( voters[f_id].V_voted == false, 
         "Already Voted Cannot Vote again");
         
         for(uint i =0; i < elections.length; i++){
 
-            if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN){
+            if(elections[i].E_ward == voters[f_id].V_ward  && elections[i].E_PIN == voters[f_id].V_PIN && elections[i].E_Year == f_year){
                 require(
                 elections[i].E_voting_phase == election_phases.Started , 
                     " Voting Phase is not yet started ... "
                 );
 
                 for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
-                    if(  keccak256(abi.encodePacked(elections[i].E_candidates[j].party_name)) == keccak256(abi.encodePacked(f_party)) ){
+                    if( keccak256(abi.encodePacked(elections[i].E_candidates[j].party_name)) == keccak256(abi.encodePacked(f_party)) ){
                         elections[i].E_candidates[j].c_votes +=1;
                         voters[f_id].V_voted = true;
-                        elections[i].E_total_voters += 1; 
+                        elections[i].E_total_voters += 1;
+                        flag=true; 
                         break;
                     }
                 }
-                
-                require(false, 
+                require(flag, 
                 "Candidate Id Not Found ...");
             }
 
@@ -299,8 +318,7 @@ contract ElectionComissionofBharat {
         
     }
 
-
-    function getCandidateVoteCount(uint f_ward,uint f_pin , uint f_year,uint f_candidate_id)public view returns (Candidate memory f_votes_count)
+   /* function getCandidateVoteCount(uint f_ward,uint f_pin , uint f_year,uint f_candidate_id)public view returns (Candidate memory f_votes_count)
     {
         for(uint i =0; i < elections.length; i++){
             
@@ -316,10 +334,9 @@ contract ElectionComissionofBharat {
                 f_votes_count = elections[i].E_candidates[f_candidate_id];
                 break;                                                              
             }           
-
         }
-
     }
+*/
     function getCandidateDetails(uint f_ward,uint f_pin , uint f_year,uint f_candidate_id)public view returns (Candidate memory f_votes_count)
     {
         for(uint i =0; i < elections.length; i++){
@@ -342,10 +359,11 @@ contract ElectionComissionofBharat {
     }
 
     function getWinnerName(uint f_ward,uint f_pin , uint f_year)public view returns (string memory winnerName)
-    {
+    {         
+        
         uint max = 0;
         for(uint i =0; i < elections.length; i++){
-            
+
             if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
                 require(
                 elections[i].E_voting_phase == election_phases.Finished, 
@@ -355,31 +373,30 @@ contract ElectionComissionofBharat {
                 for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
                     
                     if( elections[i].E_candidates[j].c_votes >  elections[i].E_candidates[max].c_votes){
-
                         max = j;
 
                     }
+
                 }
-                winnerName = elections[i].E_candidates[max].c_name;
+                
+                for(uint j =0 ;j< elections[i].E_candidate_count ; j++){
+                    
+                    if( keccak256(abi.encodePacked(elections[i].E_candidates[max].c_votes)) == keccak256(abi.encodePacked(elections[i].E_candidates[j].c_votes)) && keccak256(abi.encodePacked(max)) != keccak256(abi.encodePacked(j)) ){
+                        
+                        winnerName = string.concat(" ",elections[i].E_candidates[j].c_name);
+                    }
+
+                }
+
+                winnerName = string.concat(" ",elections[i].E_candidates[max].c_name);
                 break;
 
             }
 
         }
     }
-    /*
-    struct Election {
-        
-        uint E_ward; 
-        uint E_PIN;  
-        mapping(uint => Candidate)  E_candidates;
-        uint E_Year;
-        uint E_Id;
-        uint E_total_voters;
-        uint E_candidate_count;
-        election_phases E_voting_phase;
-    }
-    */
+ 
+    
     function getElectionDetails(uint f_ward,uint f_pin , uint f_year)public view returns (uint ward ,uint pin, uint year, uint id , uint total_voters , uint can_total_count ,election_phases phase ){
         require(
             chairpersons[msg.sender].ch_address == msg.sender,
@@ -401,6 +418,45 @@ contract ElectionComissionofBharat {
             }
         }
     }
-    
-}
 
+    function addEVM(uint f_ward , uint f_pin , uint f_year , string memory f_location , address f_evm_address)public{
+        for(uint i =0; i < elections.length; i++){
+            
+            if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
+                elections[i].E_evm[f_evm_address].EVM_address = f_evm_address;
+                elections[i].E_evm[f_evm_address].EVM_location = f_location;
+                break;
+            }
+        }
+    }
+
+    function getAllCandidateDetails(uint f_ward,uint f_pin , uint f_year)public view returns (Candidate[] memory f_candidates)
+    {
+        string memory t_name;
+        uint t_c_id;
+        uint t_c_votes;
+        string memory t_party_name;
+        
+        for(uint i =0; i < elections.length; i++){
+            
+            if(elections[i].E_ward ==f_ward  && elections[i].E_PIN == f_pin && elections[i].E_Year == f_year){
+                require(
+                elections[i].E_voting_phase == election_phases.Yet_to_Start || elections[i].E_voting_phase == election_phases.Finished,
+                    "Voting phase is On please try again later ... "
+                ); 
+                Candidate[] memory c1 = new Candidate[](elections[i].E_candidate_count) ;               
+                for(uint j =0 ;j< elections[i].E_candidate_count ; j++){   
+                    
+                    t_name = elections[i].E_candidates[j].c_name;
+                    t_c_id = elections[i].E_candidates[j].c_id;
+                    t_c_votes = elections[i].E_candidates[j].c_votes;
+                    t_party_name = elections[i].E_candidates[j].party_name;
+                    c1[j]=Candidate({c_name : t_name, c_id : t_c_id , c_votes : t_c_votes , party_name :t_party_name});
+                    
+                }
+                f_candidates = c1;
+                break;
+            }           
+        }
+    }
+}
